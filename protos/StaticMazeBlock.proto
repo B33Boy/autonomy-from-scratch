@@ -1,4 +1,6 @@
-EXTERNPROTO "webots://projects/appearances/protos/RoughPine.proto"
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/appearances/protos/Parquetry.proto"
 
 PROTO StaticMazeBlock [
   field SFVec3f translation 0 0 0
@@ -15,7 +17,7 @@ PROTO StaticMazeBlock [
         translation 0 0 0.0325
         children [
           Shape {
-            appearance RoughPine {
+            appearance Parquetry {
             }
             geometry Box {
               size 0.015 %<= fields.length.value >% 0.065
