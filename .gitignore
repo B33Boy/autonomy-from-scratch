@@ -1,0 +1,7 @@
+build/
+controllers/**/*.exe
+
+# Webots runtime files
+*.wbproj
+
+settings.json
