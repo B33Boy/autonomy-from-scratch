@@ -1,0 +1,31 @@
+EXTERNPROTO "webots://projects/appearances/protos/RoughPine.proto"
+
+PROTO StaticMazeBlock [
+  field SFVec3f translation 0 0 0
+  field SFRotation rotation 0 0 1 0
+  field SFString name "maze block"
+  field SFFloat length 0.1
+]
+{
+  Solid {
+    translation IS translation
+    rotation IS rotation
+    children [
+      DEF BOX Pose {
+        translation 0 0 0.0325
+        children [
+          Shape {
+            appearance RoughPine {
+            }
+            geometry Box {
+              size 0.015 %<= fields.length.value >% 0.065
+            }
+          }
+        ]
+      }
+    ]
+    name IS name
+    model "maze block"
+    boundingObject USE BOX
+  }
+}
