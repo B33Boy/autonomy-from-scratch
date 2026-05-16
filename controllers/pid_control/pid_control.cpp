@@ -6,8 +6,10 @@
 #include <webots/Motor.hpp>
 #include <webots/Robot.hpp>
 
-constexpr unsigned int TIME_STEP = 32;
-constexpr double DT = TIME_STEP / 1000.0; // in seconds
+#include "pid_controller.hpp"
+
+constexpr unsigned int TIME_STEP = 32;    // in ms, required by robot step loop
+constexpr double DT = TIME_STEP / 1000.0; // in s, required by PID step calculation
 constexpr double MIN_SPEED = -6.28;
 constexpr double MAX_SPEED = 6.28;
 constexpr double WALL_THRESHOLD = 100;
@@ -20,41 +22,11 @@ using velocity = double;
 std::pair<velocity, velocity>
 adjust_speeds(double output)
 {
-
     velocity l_speed = std::clamp(BASE_SPEED - output, MIN_SPEED, MAX_SPEED);
-
     velocity r_speed = std::clamp(BASE_SPEED + output, MIN_SPEED, MAX_SPEED);
 
     return {l_speed, r_speed};
 }
-
-class PID_Controller
-{
-public:
-    explicit PID_Controller(double kp, double ki, double kd) : kp_(kp), ki_(ki), kd_(kd), prev_err_(0.0), sum_err_(0.0) {}
-
-    double step(double setpoint, double measured, double dt)
-    {
-        double err = setpoint - measured;
-
-        sum_err_ += err * dt;
-
-        double derivative_err = (err - prev_err_) / dt;
-        prev_err_ = err;
-
-        return kp_ * err +
-               ki_ * sum_err_ +
-               kd_ * derivative_err;
-    }
-
-private:
-    double prev_err_;
-    double sum_err_;
-
-    double const kp_;
-    double const ki_;
-    double const kd_;
-};
 
 // entry point of the controller
 int main(int argc, char **argv)
@@ -63,14 +35,7 @@ int main(int argc, char **argv)
     Robot robot;
 
     // ==================================== initialize devices ====================================
-    // init motors
-    Motor *lm = robot.getMotor("left wheel motor");
-    Motor *rm = robot.getMotor("right wheel motor");
-
-    lm->setPosition(INFINITY);
-    rm->setPosition(INFINITY);
-
-    // init cam
+    // init cam (for funsies, not used in this demo)
     Camera *cam = robot.getCamera("camera");
     cam->enable(TIME_STEP);
 
@@ -91,23 +56,31 @@ int main(int argc, char **argv)
         sensor->enable(TIME_STEP);
     }
 
-    constexpr double kp = 0.5;
-    constexpr double ki = 0.5;
-    constexpr double kd = 0.5;
+    // init motors
+    Motor *lm = robot.getMotor("left wheel motor");
+    Motor *rm = robot.getMotor("right wheel motor");
+
+    lm->setPosition(INFINITY);
+    rm->setPosition(INFINITY);
+
+    // init PID Controller
+    constexpr double kp = 0.20;
+    constexpr double ki = 0.001;
+    constexpr double kd = 0.001;
     PID_Controller ctrl{kp, ki, kd};
+
+    // init data logger
+    
 
     // ==================================== main loop ====================================
 
     while (robot.step(TIME_STEP) != -1)
     {
-        // Measure distance from wall
-        double dist_left = ps[5]->getValue();
+        double dist_left = (ps[4]->getValue() + ps[5]->getValue() + ps[6]->getValue()) / 3.0;
 
-        // Compute output given setpoint, error, and time increment dt
-        double output = ctrl.step(WALL_THRESHOLD, dist_left, TIME_STEP);
+        double output = ctrl.step(WALL_THRESHOLD, dist_left, DT);
 
         auto [l_speed, r_speed] = adjust_speeds(output);
-
         lm->setVelocity(l_speed);
         rm->setVelocity(r_speed);
     }
