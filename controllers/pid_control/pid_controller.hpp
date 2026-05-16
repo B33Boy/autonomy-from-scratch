@@ -1,12 +1,14 @@
 #ifndef PID_CONTROLLER_HPP
 #define PID_CONTROLLER_HPP
 
+#include "data_logger.hpp"
+
 class PID_Controller
 {
 public:
     explicit PID_Controller(double kp, double ki, double kd) : kp_(kp), ki_(ki), kd_(kd), prev_err_(0.0), sum_err_(0.0) {}
 
-    double step(double setpoint, double measured, double dt)
+    PIDState step(double dt, double setpoint, double measured)
     {
         double err = setpoint - measured;
 
@@ -15,9 +17,20 @@ public:
         double derivative_err = (err - prev_err_) / dt;
         prev_err_ = err;
 
-        return kp_ * err +
-               ki_ * sum_err_ +
-               kd_ * derivative_err;
+        double output = kp_ * err +
+                        ki_ * sum_err_ +
+                        kd_ * derivative_err;
+
+        return PIDState{
+            dt,
+            setpoint,
+            measured,
+            err,
+            sum_err_,
+            derivative_err,
+            output,
+            0,
+            0};
     }
 
 private:
