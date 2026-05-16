@@ -5,4 +5,11 @@ file(GLOB CPP_SOURCES *.cpp)
 set(SOURCES ${C_SOURCES} ${CPP_SOURCES})
 
 add_executable(${CONTROLLER_NAME} ${SOURCES})
+
 target_link_libraries(${CONTROLLER_NAME} PRIVATE webots)
+
+add_custom_command(TARGET ${CONTROLLER_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    $<TARGET_FILE:${CONTROLLER_NAME}>
+    ${CMAKE_CURRENT_SOURCE_DIR}/$<TARGET_FILE_NAME:${CONTROLLER_NAME}>
+)
