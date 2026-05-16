@@ -22,7 +22,7 @@ public:
                         kd_ * derivative_err;
 
         return PIDState{
-            dt,
+            0,
             setpoint,
             measured,
             err,

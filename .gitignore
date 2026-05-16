@@ -5,3 +5,5 @@ controllers/**/*.exe
 *.wbproj
 
 settings.json
+
+.ipynb_checkpoints

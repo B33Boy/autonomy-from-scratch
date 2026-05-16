@@ -67,13 +67,13 @@ int main(int argc, char **argv)
     rm->setPosition(INFINITY);
 
     // init PID Controller
-    constexpr double kp = 0.05;
-    constexpr double ki = 0;
-    constexpr double kd = 0;
+    constexpr double kp = 0.025;
+    constexpr double ki = 0.0;
+    constexpr double kd = 0.0;
     PID_Controller ctrl{kp, ki, kd};
 
     // init logger
-    std::string filename = std::format("out_data/pid_kp_{:.2f}_ki_{:.2f}_kd_{:.2f}.csv", kp, ki, kd);
+    std::string filename = std::format("out_data/pid_kp_{:.3f}_ki_{:.3f}_kd_{:.3f}.csv", kp, ki, kd);
     DataLogger lg{filename};
     std::cout << "Logging to " << filename << "\n";
 
@@ -89,6 +89,7 @@ int main(int argc, char **argv)
         lm->setVelocity(l_speed);
         rm->setVelocity(r_speed);
 
+        state.time = robot.getTime();
         state.l_speed = l_speed;
         state.r_speed = r_speed;
         lg.log(state);
