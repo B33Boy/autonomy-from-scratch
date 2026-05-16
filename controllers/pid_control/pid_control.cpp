@@ -8,7 +8,7 @@
 #include <webots/Motor.hpp>
 #include <webots/Robot.hpp>
 
-#include "pid_controller.hpp"
+#include "pid.hpp"
 #include "data_logger.hpp"
 
 constexpr unsigned int TIME_STEP = 32;    // in ms, required by robot step loop
@@ -73,12 +73,10 @@ int main(int argc, char **argv)
     PID_Controller ctrl{kp, ki, kd};
 
     // init logger
-    std::cout << "Starting!\n";
     std::string filename = std::format("out_data/pid_kp_{:.2f}_ki_{:.2f}_kd_{:.2f}.csv", kp, ki, kd);
+    DataLogger lg{filename};
+    std::cout << "Logging to " << filename << "\n";
 
-    DataLogger lg{std::format("out_data/pid_kp_{:.2f}_ki_{:.2f}_kd_{:.2f}.csv", kp, ki, kd)};
-
-    std::cout << filename << "\n";
     // ==================================== main loop ====================================
 
     while (robot.step(TIME_STEP) != -1)
