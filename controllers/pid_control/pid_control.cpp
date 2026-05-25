@@ -7,14 +7,16 @@
 #include <webots/DistanceSensor.hpp>
 #include <webots/Motor.hpp>
 #include <webots/Robot.hpp>
+#include <webots/Supervisor.hpp>
 
 #include "pid.hpp"
 #include "data_logger.hpp"
 
-constexpr unsigned int TIME_STEP = 32;    // in ms, required by robot step loop
+constexpr unsigned int TIME_STEP = 16;    // webots interprets this as ms, required by robot step loop
 constexpr double DT = TIME_STEP / 1000.0; // in s, required by PID step calculation
 constexpr double MIN_SPEED = -6.28;
 constexpr double MAX_SPEED = 6.28;
+constexpr double MAX_SPEED_LEFT = 6.00;
 constexpr double WALL_THRESHOLD = 100;
 constexpr double BASE_SPEED = 3.14;
 
@@ -22,10 +24,10 @@ constexpr double BASE_SPEED = 3.14;
 using namespace webots;
 using velocity = double;
 
-std::pair<velocity, velocity>
-adjust_speeds(double output)
+std::pair<velocity, velocity> adjust_speeds(double output)
 {
-    velocity l_speed = std::clamp(BASE_SPEED - output, MIN_SPEED, MAX_SPEED);
+    // Add asymmetry to the left wheel by capping max speed
+    velocity l_speed = std::clamp(BASE_SPEED - output, MIN_SPEED, MAX_SPEED_LEFT);
     velocity r_speed = std::clamp(BASE_SPEED + output, MIN_SPEED, MAX_SPEED);
 
     return {l_speed, r_speed};
@@ -34,24 +36,24 @@ adjust_speeds(double output)
 // entry point of the controller
 int main(int argc, char **argv)
 {
-    // create the Robot instance
-    Robot robot;
+    // create the Supervisor instance
+    Supervisor *robot = new Supervisor();
 
     // ==================================== initialize devices ====================================
     // init cam (for funsies, not used in this demo)
-    Camera *cam = robot.getCamera("camera");
+    Camera *cam = robot->getCamera("camera");
     cam->enable(TIME_STEP);
 
     // init side sensors
     std::array<DistanceSensor *, 8> ps{
-        robot.getDistanceSensor("ps0"), // forward right
-        robot.getDistanceSensor("ps1"), // top right
-        robot.getDistanceSensor("ps2"), // right
-        robot.getDistanceSensor("ps3"), // bottom right
-        robot.getDistanceSensor("ps4"), // bottom left
-        robot.getDistanceSensor("ps5"), // left
-        robot.getDistanceSensor("ps6"), // top left
-        robot.getDistanceSensor("ps7"), // forward left
+        robot->getDistanceSensor("ps0"), // forward right
+        robot->getDistanceSensor("ps1"), // top right
+        robot->getDistanceSensor("ps2"), // right
+        robot->getDistanceSensor("ps3"), // bottom right
+        robot->getDistanceSensor("ps4"), // bottom left
+        robot->getDistanceSensor("ps5"), // left
+        robot->getDistanceSensor("ps6"), // top left
+        robot->getDistanceSensor("ps7"), // forward left
     };
 
     for (auto *sensor : ps)
@@ -60,8 +62,8 @@ int main(int argc, char **argv)
     }
 
     // init motors
-    Motor *lm = robot.getMotor("left wheel motor");
-    Motor *rm = robot.getMotor("right wheel motor");
+    Motor *lm = robot->getMotor("left wheel motor");
+    Motor *rm = robot->getMotor("right wheel motor");
 
     lm->setPosition(INFINITY);
     rm->setPosition(INFINITY);
@@ -70,26 +72,27 @@ int main(int argc, char **argv)
     constexpr double kp = 0.025;
     constexpr double ki = 0.0;
     constexpr double kd = 0.0;
-    PID_Controller ctrl{kp, ki, kd};
+    PID_Controller ctrl{kp, ki, kd, DT};
 
     // init logger
-    std::string filename = std::format("out_data/pid_kp_{:.3f}_ki_{:.3f}_kd_{:.3f}.csv", kp, ki, kd);
+    std::string filename = std::format("out_data/pid_kp_{:.4f}_ki_{:.4f}_kd_{:.4f}.csv", kp, ki, kd);
     DataLogger lg{filename};
     std::cout << "Logging to " << filename << "\n";
 
     // ==================================== main loop ====================================
 
-    while (robot.step(TIME_STEP) != -1)
+    while (robot->step(TIME_STEP) != -1)
     {
-        double dist_left = (ps[4]->getValue() + ps[5]->getValue() + ps[6]->getValue()) / 3.0;
 
-        auto state = ctrl.step(DT, WALL_THRESHOLD, dist_left);
+        double dist_left = ps[5]->getValue();
+
+        auto state = ctrl.step(WALL_THRESHOLD, dist_left);
 
         auto [l_speed, r_speed] = adjust_speeds(state.output);
         lm->setVelocity(l_speed);
         rm->setVelocity(r_speed);
 
-        state.time = robot.getTime();
+        state.time = robot->getTime();
         state.l_speed = l_speed;
         state.r_speed = r_speed;
         lg.log(state);

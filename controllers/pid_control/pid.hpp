@@ -6,15 +6,15 @@
 class PID_Controller
 {
 public:
-    explicit PID_Controller(double kp, double ki, double kd) : kp_(kp), ki_(ki), kd_(kd), prev_err_(0.0), sum_err_(0.0) {}
+    explicit PID_Controller(double kp, double ki, double kd, double dt) : kp_(kp), ki_(ki), kd_(kd), dt_(dt), prev_err_(0.0), sum_err_(0.0) {}
 
-    PIDState step(double dt, double setpoint, double measured)
+    PIDState step(double setpoint, double measured)
     {
         double err = setpoint - measured;
 
-        sum_err_ = std::clamp(sum_err_ + err * dt, -10.0, 10.0); // anti-integral windup
+        sum_err_ = sum_err_ + err * dt_;
 
-        double derivative_err = (err - prev_err_) / dt;
+        double derivative_err = (err - prev_err_) / dt_;
         prev_err_ = err;
 
         double output = kp_ * err +
@@ -40,6 +40,7 @@ private:
     double const kp_;
     double const ki_;
     double const kd_;
+    double const dt_;
 };
 
 #endif // PID_CONTROLLER_HPP
