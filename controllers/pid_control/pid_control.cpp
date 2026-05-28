@@ -12,13 +12,8 @@
 #include "pid.hpp"
 #include "data_logger.hpp"
 
-constexpr unsigned int TIME_STEP = 16;    // webots interprets this as ms, required by robot step loop
+constexpr unsigned int TIME_STEP = 24;    // webots interprets this as ms, required by robot step loop
 constexpr double DT = TIME_STEP / 1000.0; // in s, required by PID step calculation
-constexpr double MIN_SPEED = -6.28;
-constexpr double MAX_SPEED = 6.28;
-constexpr double MAX_SPEED_LEFT = 6.00;
-constexpr double WALL_THRESHOLD = 100;
-constexpr double BASE_SPEED = 3.14;
 
 // All the webots classes are defined in the "webots" namespace
 using namespace webots;
@@ -69,13 +64,17 @@ int main(int argc, char **argv)
     rm->setPosition(INFINITY);
 
     // init PID Controller
-    constexpr double kp = 0.025;
-    constexpr double ki = 0.0;
-    constexpr double kd = 0.0;
-    PID_Controller ctrl{kp, ki, kd, DT};
+    constexpr double kp = 0.00900;
+    constexpr double ki = 0.00286;
+    constexpr double kd = 0.00708;
+    constexpr double alpha = 0.2;
+    PID_Controller ctrl{kp, ki, kd, DT, alpha};
 
+    double running_mean = 0.0;
+    int step_count = 0;
     // init logger
-    std::string filename = std::format("out_data/pid_kp_{:.4f}_ki_{:.4f}_kd_{:.4f}.csv", kp, ki, kd);
+
+    std::string filename = std::format("out_data/pid_kp_{:.5f}_ki_{:.5f}_kd_{:.5f}_alpha_{:.2}.csv", kp, ki, kd, alpha);
     DataLogger lg{filename};
     std::cout << "Logging to " << filename << "\n";
 
@@ -83,18 +82,25 @@ int main(int argc, char **argv)
 
     while (robot->step(TIME_STEP) != -1)
     {
-
         double dist_left = ps[5]->getValue();
+        std::cout << "dist_left: " << dist_left << "\n";
 
+        // Perform control step and get PIDState
         auto state = ctrl.step(WALL_THRESHOLD, dist_left);
+        step_count++;
+        running_mean += (state.err - running_mean) / step_count;
 
+        // Adjust speeds
         auto [l_speed, r_speed] = adjust_speeds(state.output);
         lm->setVelocity(l_speed);
         rm->setVelocity(r_speed);
 
+        // Finally set the rest of the missing fields in state for logging
         state.time = robot->getTime();
         state.l_speed = l_speed;
         state.r_speed = r_speed;
+        state.rolling_mean = running_mean;
+
         lg.log(state);
     }
 

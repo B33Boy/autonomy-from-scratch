@@ -16,6 +16,7 @@ struct PIDState
     double output;
     double l_speed;
     double r_speed;
+    double rolling_mean;
 };
 
 /**
@@ -33,12 +34,12 @@ public:
             throw std::runtime_error("Failed to open log file!");
         }
 
-        file_ << "time,setpoint,measured,err,sum_err,der,output,l_speed,r_speed\n";
+        file_ << "time,setpoint,measured,err,sum_err,der,output,l_speed,r_speed,rolling_mean\n";
     }
 
     void log(PIDState const &entry)
     {
-        file_ << entry.time << "," << entry.setpoint << "," << entry.measured << "," << entry.err << "," << entry.sum_err << "," << entry.der << "," << entry.output << "," << entry.l_speed << "," << entry.r_speed << "\n";
+        file_ << entry.time << "," << entry.setpoint << "," << entry.measured << "," << entry.err << "," << entry.sum_err << "," << entry.der << "," << entry.output << "," << entry.l_speed << "," << entry.r_speed << "," << entry.rolling_mean << "\n";
     }
 
 private:
