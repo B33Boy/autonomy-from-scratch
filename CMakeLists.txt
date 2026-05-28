@@ -26,3 +26,4 @@ target_link_libraries(webots INTERFACE
 
 add_subdirectory(controllers/line_follower)
 add_subdirectory(controllers/pid_control)
+add_subdirectory(controllers/maze_solve)

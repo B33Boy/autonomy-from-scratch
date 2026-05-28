@@ -20,7 +20,6 @@ All simulations are built and tested in Webots.
 | ------------------- | ------- |
 | Line Following      | ✅       |
 | PID Control         | ✅       |
-| Low Pass Filtering  | ✅       |
 | Maze Solving        | 🚧      |
 | Path Planning       | Planned |
 | SLAM / Localization | Planned |
