@@ -71,7 +71,7 @@ Exploring how proportional gain affects:
 
 Adding derivative damping to reduce oscillation and improve stability.
 
-![PD Controller Demo](https://github.com/B33Boy/autonomy-from-scratch/blob/main/controllers/pid_control/gifs/Corridor_PI.gif)
+![PD Controller Demo](https://github.com/B33Boy/autonomy-from-scratch/blob/main/controllers/pid_control/gifs/Corridor_PD.gif)
 
 ### Concepts
 
