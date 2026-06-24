@@ -1,30 +1,36 @@
 #include <array>
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <webots/Camera.hpp>
 #include <webots/DistanceSensor.hpp>
 #include <webots/Motor.hpp>
+#include <webots/PositionSensor.hpp>
 #include <webots/Supervisor.hpp>
 #include "pid.hpp"
 
 constexpr unsigned int TIME_STEP = 24;
 constexpr double DT = TIME_STEP / 1000.0;
+constexpr double M_PI = 3.14159;
 
 // ================================ turn constants ================================
 constexpr double TURN_SPEED = 2.0;
-constexpr int TURN_STEPS = 65; // calibrate empirically for 90 degrees
+
+// e-puck geometry — used to compute how far each wheel must rotate for a 90° pivot.
+// For any other platform, swap in the correct values from the robot's spec sheet.
+//
+//   arc each wheel travels = (AXLE_LENGTH / 2) × (π / 2)
+//   wheel rotation (rad)   = arc / WHEEL_RADIUS
+//
+constexpr double WHEEL_RADIUS = 0.0205; // metres
+constexpr double AXLE_LENGTH = 0.052;   // metres, centre-to-centre
+constexpr double TURN_RADIANS =
+    (AXLE_LENGTH / 2.0) * (M_PI / 2.0) / WHEEL_RADIUS; // ≈ 1.99 rad per 90°
+
+constexpr double WALL_SETPOINT = 80.0; // desired side sensor reading
 
 using namespace webots;
 using velocity = double;
-
-// ================================ state machine ================================
-enum class RobotState
-{
-    FOLLOW_WALL,
-    TURN_LEFT,
-    TURN_RIGHT,
-    GO_FORWARD,
-};
 
 // ================================ sensor reading ================================
 struct SensorReading
@@ -38,8 +44,8 @@ struct SensorReading
     {
         return front_left > FRONT_THRESHOLD || front_right > FRONT_THRESHOLD;
     }
-    bool wall_left() const { return side_left > WALL_THRESHOLD; }
-    bool wall_right() const { return side_right > WALL_THRESHOLD; }
+    bool wall_left() const { return side_left > SIDE_THRESHOLD; }
+    bool wall_right() const { return side_right > SIDE_THRESHOLD; }
 };
 
 SensorReading read_sensors(std::array<DistanceSensor *, 8> const &ps)
@@ -60,40 +66,59 @@ std::pair<velocity, velocity> wall_follow_speeds(double output)
     return {l, r};
 }
 
-std::pair<velocity, velocity> turn_speeds(RobotState state)
+// ================================ encoder turn primitives =====================
+//
+// Instead of counting simulation steps (open-loop, time-dependent),
+// we read absolute wheel positions from the position sensors and spin
+// until each wheel has physically rotated TURN_RADIANS from where it
+// started.  This is robust to speed variation and simulation jitter.
+//
+// NOTE: Webots position sensors return a monotonically increasing angle
+// (unbounded, not wrapped to 2π), so simple subtraction always gives
+// the correct delta — no wrap-around handling needed.
+
+void turn_right(Supervisor *robot,
+                Motor *lm, Motor *rm,
+                PositionSensor *lps, PositionSensor *rps)
 {
-    if (state == RobotState::TURN_LEFT)
-        return {-TURN_SPEED, TURN_SPEED};
-    return {TURN_SPEED, -TURN_SPEED};
+    double const start_l = lps->getValue();
+    double const start_r = rps->getValue();
+
+    lm->setVelocity(TURN_SPEED);  // left wheel forward
+    rm->setVelocity(-TURN_SPEED); // right wheel backward
+
+    while (robot->step(TIME_STEP) != -1)
+    {
+        double delta_l = std::abs(lps->getValue() - start_l);
+        double delta_r = std::abs(rps->getValue() - start_r);
+        if (delta_l >= TURN_RADIANS && delta_r >= TURN_RADIANS)
+            break;
+    }
+
+    lm->setVelocity(0.0);
+    rm->setVelocity(0.0);
 }
 
-// ================================ state transitions ================================
-RobotState next_state(RobotState current, SensorReading const &s)
+void turn_left(Supervisor *robot,
+               Motor *lm, Motor *rm,
+               PositionSensor *lps, PositionSensor *rps)
 {
-    switch (current)
+    double const start_l = lps->getValue();
+    double const start_r = rps->getValue();
+
+    lm->setVelocity(-TURN_SPEED); // left wheel backward
+    rm->setVelocity(TURN_SPEED);  // right wheel forward
+
+    while (robot->step(TIME_STEP) != -1)
     {
-    case RobotState::FOLLOW_WALL:
-        if (s.wall_ahead() && s.wall_left())
-            return RobotState::TURN_RIGHT;
-        if (s.wall_ahead())
-            return RobotState::TURN_LEFT;
-        if (!s.wall_left())
-            return RobotState::GO_FORWARD;
-        return RobotState::FOLLOW_WALL;
-
-    case RobotState::GO_FORWARD:
-        if (s.wall_left())
-            return RobotState::FOLLOW_WALL;
-        if (s.wall_ahead())
-            return RobotState::TURN_LEFT;
-        return RobotState::GO_FORWARD;
-
-    // turn completion is handled separately in the main loop
-    case RobotState::TURN_LEFT:
-    case RobotState::TURN_RIGHT:
-        return current;
+        double delta_l = std::abs(lps->getValue() - start_l);
+        double delta_r = std::abs(rps->getValue() - start_r);
+        if (delta_l >= TURN_RADIANS && delta_r >= TURN_RADIANS)
+            break;
     }
-    return current;
+
+    lm->setVelocity(0.0);
+    rm->setVelocity(0.0);
 }
 
 // ================================ entry point ================================
@@ -125,54 +150,72 @@ int main(int argc, char **argv)
     lm->setPosition(INFINITY);
     rm->setPosition(INFINITY);
 
+    // init position sensors (encoders)
+    // Webots exposes these from the motor; enable them at the same timestep.
+    PositionSensor *lps = lm->getPositionSensor();
+    PositionSensor *rps = rm->getPositionSensor();
+    lps->enable(TIME_STEP);
+    rps->enable(TIME_STEP);
+
     // init PID
     PID_Controller ctrl{KP, KI, KD, DT, ALPHA};
 
-    // state machine
-    RobotState state = RobotState::FOLLOW_WALL;
-    int turn_steps = 0;
+    // Step once so sensor buffers are populated before the main loop reads them
+    robot->step(TIME_STEP);
+
+    // ================================ main loop ================================
+    /**
+    WHILE NOT at the exit:
+        IF no wall on the left:
+            Turn Left
+            Move Forward
+        ELSE IF no wall in front:
+            Move Forward
+        ELSE IF no wall on the right:
+            Turn Right
+            Move Forward
+        ELSE:
+            Turn Around (Dead End)
+     */
 
     while (robot->step(TIME_STEP) != -1)
     {
         auto sensors = read_sensors(ps);
+        std::cout << "wall_left: " << sensors.wall_left() << " " << "wall_right: " << sensors.wall_ahead() << "\n";
 
-        std::cout << sensors.side_left << "\n";
-
-        switch (state)
+        // --- motion planning hook (fill this in next) ---
+        if (!sensors.wall_left())
         {
-        case RobotState::FOLLOW_WALL:
+            ctrl.reset();
+            turn_left(robot, lm, rm, lps, rps);
+        }
+        else if (!sensors.wall_ahead())
         {
-            double output = ctrl.step(WALL_THRESHOLD, sensors.side_left);
-            auto [l, r] = wall_follow_speeds(output);
-            lm->setVelocity(l);
-            rm->setVelocity(r);
-            state = next_state(state, sensors);
-            // reset PID when leaving FOLLOW_WALL
-            if (state != RobotState::FOLLOW_WALL)
-                ctrl.reset();
-            break;
+            double pid_out = ctrl.step(WALL_SETPOINT, sensors.side_left);
+            auto [lv, rv] = wall_follow_speeds(pid_out);
+            lm->setVelocity(lv);
+            rm->setVelocity(rv);
         }
-        case RobotState::TURN_LEFT:
-        case RobotState::TURN_RIGHT:
+        else if (!sensors.wall_right())
         {
-            auto [l, r] = turn_speeds(state);
-            lm->setVelocity(l);
-            rm->setVelocity(r);
-            if (++turn_steps >= TURN_STEPS)
-            {
-                turn_steps = 0;
-                state = RobotState::GO_FORWARD; // re-acquire wall before PID
-            }
-            break;
+            ctrl.reset();
+            turn_right(robot, lm, rm, lps, rps);
         }
-        case RobotState::GO_FORWARD:
+        else
         {
-            lm->setVelocity(BASE_SPEED);
-            rm->setVelocity(BASE_SPEED);
-            state = next_state(state, sensors);
-            break;
+            // turn around
+            ctrl.reset();
+            turn_left(robot, lm, rm, lps, rps);
+            turn_left(robot, lm, rm, lps, rps);
         }
-        }
+        // else
+        // {
+        //     // Wall-follow tick
+        //     double pid_out = ctrl.step(WALL_SETPOINT, sensors.side_left);
+        //     auto [lv, rv] = wall_follow_speeds(pid_out);
+        //     lm->setVelocity(lv);
+        //     rm->setVelocity(rv);
+        // }
     }
 
     return 0;

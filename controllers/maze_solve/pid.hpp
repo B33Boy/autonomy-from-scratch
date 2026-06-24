@@ -16,7 +16,7 @@ constexpr double KD = 0.00708;
 constexpr double ALPHA = 0.2;
 
 // ================================ wall following ================================
-constexpr double WALL_THRESHOLD = 100.0;
+constexpr double SIDE_THRESHOLD = 100.0;
 constexpr double FRONT_THRESHOLD = 80.0; // separate threshold for turn decisions
 constexpr double KI_BUDGET = 0.3;        // integral term gets 30% of actuator range
 
